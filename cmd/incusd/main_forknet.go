@@ -323,7 +323,6 @@ func (c *cmdForknet) runDHCP(_ *cobra.Command, args []string) error {
 	if err != nil {
 		logger.WithError(err).Error("Unable to read hostname file")
 	}
-
 	hostname := strings.TrimSpace(string(bb))
 
 	// Create PID file.
@@ -356,8 +355,8 @@ func (c *cmdForknet) runDHCP(_ *cobra.Command, args []string) error {
 
 	// Initialize per-interface lease maps.
 	c.applyDNSMu.Lock()
-	c.dhcpv4Leases = map[string]*nclient4.Lease{}
-	c.dhcpv6Leases = map[string]*dhcpv6.Message{}
+	c.dhcpv4Leases = make(map[string]*nclient4.Lease)
+	c.dhcpv6Leases = make(map[string]*dhcpv6.Message)
 	c.applyDNSMu.Unlock()
 
 	// Buffer size is 2 goroutines per iface.
@@ -724,14 +723,12 @@ func (c *cmdForknet) dhcpApplyDNS(logger *logrus.Logger) error {
 		}
 
 		// Domain name (option 15).
-		dn := lease.Offer.DomainName()
-		if dn != "" {
+		if dn := lease.Offer.DomainName(); dn != "" {
 			domainNames = append(domainNames, dn)
 		}
 
 		// Domain search list (option 119).
-		ds := lease.Offer.DomainSearch()
-		if ds != nil && len(ds.Labels) > 0 {
+		if ds := lease.Offer.DomainSearch(); ds != nil && len(ds.Labels) > 0 {
 			searchLabels = append(searchLabels, ds.Labels...)
 		}
 	}
@@ -748,8 +745,7 @@ func (c *cmdForknet) dhcpApplyDNS(logger *logrus.Logger) error {
 		}
 
 		// Domain search list.
-		dsl := reply.Options.DomainSearchList()
-		if dsl != nil && len(dsl.Labels) > 0 {
+		if dsl := reply.Options.DomainSearchList(); dsl != nil && len(dsl.Labels) > 0 {
 			searchLabels = append(searchLabels, dsl.Labels...)
 		}
 	}
@@ -762,13 +758,11 @@ func (c *cmdForknet) dhcpApplyDNS(logger *logrus.Logger) error {
 		logger.WithError(err).Error("Giving up on DHCP, couldn't create resolv.conf")
 		return err
 	}
-
 	defer f.Close()
 
 	// Write unique nameservers.
 	for ns := range nameservers {
-		_, err = fmt.Fprintf(f, "nameserver %s\n", ns)
-		if err != nil {
+		if _, err = fmt.Fprintf(f, "nameserver %s\n", ns); err != nil {
 			logger.WithError(err).Error("Giving up on DHCP, couldn't write resolv.conf")
 			return err
 		}
@@ -778,31 +772,24 @@ func (c *cmdForknet) dhcpApplyDNS(logger *logrus.Logger) error {
 	if len(searchLabels) > 0 {
 		seen := map[string]struct{}{}
 		out := []string{}
-
 		for _, s := range searchLabels {
 			if s == "" {
 				continue
 			}
-
-			_, ok := seen[s]
-			if ok {
+			if _, ok := seen[s]; ok {
 				continue
 			}
-
 			seen[s] = struct{}{}
 			out = append(out, s)
 		}
-
 		if len(out) > 0 {
-			_, err = fmt.Fprintf(f, "search %s\n", strings.Join(out, ", "))
-				if err != nil {
+			if _, err = fmt.Fprintf(f, "search %s\n", strings.Join(out, ", ")); err != nil {
 				logger.WithError(err).Error("Giving up on DHCP, couldn't write resolv.conf")
 				return err
 			}
 		}
 	} else if len(domainNames) > 0 {
-		_, err = fmt.Fprintf(f, "domain %s\n", domainNames[0])
-		if err != nil {
+		if _, err = fmt.Fprintf(f, "domain %s\n", domainNames[0]); err != nil {
 			logger.WithError(err).Error("Giving up on DHCP, couldn't write resolv.conf")
 			return err
 		}
